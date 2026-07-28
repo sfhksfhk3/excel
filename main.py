@@ -134,7 +134,6 @@ class SerialProcessorApp:
         self.root.geometry("800x700")
         self.root.resizable(True, True)
 
-        # 初始化所有可能用到的屬性，避免 AttributeError
         self.source_files = []
         self.target_file = None
         self.current_serials = []
@@ -143,7 +142,6 @@ class SerialProcessorApp:
         self.is_merged_var = tk.BooleanVar(value=False)
         self.temp_dir = None
 
-        # UI 元件（先設為 None，後續建立）
         self.btn_source = None
         self.lbl_source = None
         self.btn_clear_source = None
@@ -173,10 +171,8 @@ class SerialProcessorApp:
         main_frame = ttk.Frame(self.root, padding=15)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # 標題
         ttk.Label(main_frame, text="批次配對與編號生成工具", font=("微軟正黑體", 16, "bold")).pack(pady=(0, 10))
 
-        # 步驟 1：來源檔案
         step1 = ttk.LabelFrame(main_frame, text="步驟 1：來源檔案", padding=10)
         step1.pack(fill=tk.X, pady=5)
 
@@ -192,7 +188,6 @@ class SerialProcessorApp:
         self.chk_merged = ttk.Checkbutton(step1, text="來源為匯整總表（第一欄為檔案名）", variable=self.is_merged_var)
         self.chk_merged.pack(anchor=tk.W, pady=(5, 0))
 
-        # 步驟 2：目標模式
         step2 = ttk.LabelFrame(main_frame, text="步驟 2：目標模式", padding=10)
         step2.pack(fill=tk.X, pady=5)
 
@@ -202,7 +197,6 @@ class SerialProcessorApp:
         ttk.Radiobutton(mode_frame, text="載入目標檔案", variable=self.mode_var, value="target", command=self.on_mode_change).pack(side=tk.LEFT, padx=5)
         ttk.Radiobutton(mode_frame, text="手動輸入起始編號", variable=self.mode_var, value="manual", command=self.on_mode_change).pack(side=tk.LEFT, padx=5)
 
-        # 目標檔案區（模式1）
         self.target_frame = ttk.Frame(step2)
         self.btn_target = ttk.Button(self.target_frame, text="選擇目標檔案", command=self.select_target_file)
         self.btn_target.pack(side=tk.LEFT, padx=5)
@@ -211,7 +205,6 @@ class SerialProcessorApp:
         self.btn_clear_target = ttk.Button(self.target_frame, text="清除", command=self.clear_target_file)
         self.btn_clear_target.pack(side=tk.LEFT, padx=5)
 
-        # 手動輸入區（模式2）
         self.manual_frame = ttk.Frame(step2)
 
         f_manual = ttk.Frame(self.manual_frame)
@@ -237,10 +230,8 @@ class SerialProcessorApp:
         self.btn_use_next = ttk.Button(next_frame, text="套用", command=self.use_next_start)
         self.btn_use_next.pack(side=tk.LEFT, padx=5)
 
-        # 重要：所有 UI 元件建立後再根據模式顯示/隱藏
         self.on_mode_change()
 
-        # 執行按鈕
         btn_frame = ttk.Frame(main_frame)
         btn_frame.pack(fill=tk.X, pady=10)
         self.btn_process = ttk.Button(btn_frame, text="▶ 開始處理", command=self.start_processing, state=tk.DISABLED)
@@ -250,7 +241,6 @@ class SerialProcessorApp:
         self.progress_label = ttk.Label(btn_frame, text="", foreground="gray")
         self.progress_label.pack(side=tk.LEFT, padx=5)
 
-        # 狀態輸出
         status_frame = ttk.LabelFrame(main_frame, text="處理狀態", padding=10)
         status_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         self.status_text = tk.Text(status_frame, height=12, wrap=tk.WORD, font=("Consolas", 9))
@@ -259,10 +249,8 @@ class SerialProcessorApp:
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.status_text.config(yscrollcommand=scrollbar.set)
 
-        # 一開始就呼叫 check_ready，因為模式可能已經符合條件
         self.check_ready()
 
-    # ---------- 輔助方法 ----------
     def clear_source_files(self):
         self.source_files = []
         self.lbl_source.config(text="尚未選擇", foreground="gray")
@@ -340,7 +328,6 @@ class SerialProcessorApp:
             self.generate_serials()
 
     def check_ready(self):
-        # 防禦：確保 btn_process 已建立
         if self.btn_process is None:
             return
         ready = False
@@ -360,7 +347,6 @@ class SerialProcessorApp:
         self.root.update_idletasks()
 
     def start_processing(self):
-        # 禁用相關按鈕
         self.btn_process.config(state=tk.DISABLED)
         self.btn_source.config(state=tk.DISABLED)
         self.btn_clear_source.config(state=tk.DISABLED)
@@ -387,7 +373,6 @@ class SerialProcessorApp:
             self.log(f"來源類型：{'匯整總表' if is_merged else '個別檔案'}")
             self.log("=" * 50)
 
-            # 建立暫存目錄並複製來源
             self.temp_dir = tempfile.mkdtemp(prefix="batch_proc_")
             temp_sources = []
             for src in self.source_files:
@@ -497,7 +482,6 @@ class SerialProcessorApp:
 
             self.log(f"\n📊 有效配對：{len(data_mapping)}，重複 Seal1：{len(duplicate_records)}")
 
-            # 取得目標清單
             target_list = []
             if mode == "target":
                 self.log(f"\n🎯 讀取目標檔案：{os.path.basename(self.target_file)}")
@@ -516,7 +500,6 @@ class SerialProcessorApp:
             if mode == "target":
                 wb = wb_target
                 ws = wb.active
-                # 設定字型
                 for row in ws.iter_rows(min_row=1, max_row=ws.max_row, max_col=ws.max_column):
                     for cell in row:
                         cell.font = Font(name="新細明體", size=16)
@@ -524,7 +507,8 @@ class SerialProcessorApp:
                 wb = Workbook()
                 ws = wb.active
                 ws.title = "配對結果"
-                headers = ["目標編號", "批次", "日期", "CEM 編號", "狀態"]
+                # 【修改】刪除 E Column 的狀態欄位，統一生成至 A,B,C,D
+                headers = ["目標編號", "批次", "日期", "CEM 編號"]
                 for i, h in enumerate(headers, 1):
                     cell = ws.cell(row=1, column=i, value=h)
                     cell.font = Font(name="新細明體", size=12, bold=True)
@@ -541,6 +525,7 @@ class SerialProcessorApp:
 
             start_row = 2 if mode == "manual" else 1
 
+            # 【修改】目標清單為嚴格按照順序的迴圈
             for i, serial in enumerate(target_list):
                 row = start_row + i
                 target_key = clean_key(serial)
@@ -548,6 +533,7 @@ class SerialProcessorApp:
                 if mode == "target":
                     c_col, g_col, i_col, j_col = 3, 7, 9, 10
                 else:
+                    # 【修改】配對成功的由 A Column 開始 (A=1, B=2, C=3, D=4)
                     c_col, g_col, i_col, j_col = 1, 2, 3, 4
 
                 c_cell = ws.cell(row=row, column=c_col)
@@ -576,8 +562,6 @@ class SerialProcessorApp:
                         j_cell.value = cem_val
                     j_cell.font = default_font
 
-                    if mode == "manual":
-                        ws.cell(row=row, column=5, value="✓ 已配對").font = default_font
                     match_count += 1
                     matched_keys.add(target_key)
                 else:
@@ -589,13 +573,15 @@ class SerialProcessorApp:
                             cell.fill = yellow_fill
                         c_cell.fill = yellow_fill
                     else:
+                        # 【修改】保留空格並標黃色，不再寫入 E 欄的 "未找到" 狀態
                         for col in [2, 3, 4]:
-                            ws.cell(row=row, column=col).fill = yellow_fill
-                        ws.cell(row=row, column=5, value="⚠ 未找到").font = default_font
+                            cell = ws.cell(row=row, column=col)
+                            cell.value = ""  # 保留空格
+                            cell.fill = yellow_fill
                         c_cell.fill = yellow_fill
                     not_found_count += 1
 
-            # 警示區 P~S 從第 1 列開始
+            # 警示區 P~S 從第 1 列開始 (由 P Column 開始：16)
             alert_start = 1
             alert_headers = ["狀態", "原始 Seal1", "批次", "CEM 編號"]
             for idx, h in enumerate(alert_headers):
@@ -658,7 +644,6 @@ class SerialProcessorApp:
     def finish_processing(self):
         self.progress.stop()
         self.progress_label.config(text="")
-        # 恢復按鈕狀態
         self.btn_process.config(state=tk.NORMAL)
         self.btn_source.config(state=tk.NORMAL)
         self.btn_clear_source.config(state=tk.NORMAL)
