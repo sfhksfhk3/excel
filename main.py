@@ -130,7 +130,7 @@ def get_next_start(start_serial, count=50):
 class SerialProcessorApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("吉配對 v8.0") # 更改工具名稱
+        self.root.title("吉配對")
         self.root.geometry("800x750")
         self.root.resizable(True, True)
 
@@ -224,13 +224,13 @@ class SerialProcessorApp:
         self.btn_clear_list.pack(anchor=tk.W, fill=tk.X, pady=(20, 2))
 
         # ====== 新增：輸出清單按鈕 ======
-        self.btn_export_list = ttk.Button(left_ctrl, text="💾 輸出清單Excel檔案", command=self.export_manual_list)
+        self.btn_export_list = ttk.Button(left_ctrl, text=" 輸出清單Excel檔案", command=self.export_manual_list)
         self.btn_export_list.pack(anchor=tk.W, fill=tk.X, pady=2)
 
         right_list = ttk.Frame(self.manual_frame)
         right_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
-        ttk.Label(right_list, text="目標編號清單 (雙擊修改 / 選取按 Delete 刪除)：").pack(anchor=tk.W, pady=(0, 2))
+        ttk.Label(right_list, text="目標編號清單 (雙擊修改 / Delete 刪除)：").pack(anchor=tk.W, pady=(0, 2))
         
         scroll_y = tk.Scrollbar(right_list)
         scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
@@ -245,7 +245,7 @@ class SerialProcessorApp:
 
         btn_frame = ttk.Frame(main_frame)
         btn_frame.pack(fill=tk.X, pady=10)
-        self.btn_process = ttk.Button(btn_frame, text="▶ 開始處理 (套用所有清單)", command=self.start_processing, state=tk.DISABLED)
+        self.btn_process = ttk.Button(btn_frame, text="開始處理 (套用所有清單)", command=self.start_processing, state=tk.DISABLED)
         self.btn_process.pack(side=tk.LEFT, padx=5)
         self.progress = ttk.Progressbar(btn_frame, mode='indeterminate', length=200)
         self.progress.pack(side=tk.LEFT, padx=5)
@@ -396,12 +396,12 @@ class SerialProcessorApp:
         if ready:
             self.btn_process.config(state=tk.NORMAL)
             if self.mode_var.get() == "manual":
-                self.btn_process.config(text=f"▶ 開始處理 (共 {len(self.current_serials)} 筆)")
+                self.btn_process.config(text=f"開始處理 (共 {len(self.current_serials)} 筆)")
             else:
-                self.btn_process.config(text="▶ 開始處理")
+                self.btn_process.config(text="開始處理")
         else:
             self.btn_process.config(state=tk.DISABLED)
-            self.btn_process.config(text="▶ 開始處理")
+            self.btn_process.config(text="開始處理")
 
     def log(self, message):
         self.status_text.insert(tk.END, message + "\n")
@@ -448,7 +448,7 @@ class SerialProcessorApp:
 
             data_mapping = {}
 
-            self.log("\n📦 讀取來源資料...")
+            self.log("\n 讀取來源資料...")
             for fpath in temp_sources:
                 self.log(f"  → {os.path.basename(fpath)}")
                 try:
@@ -458,7 +458,7 @@ class SerialProcessorApp:
                         count_dup = 0
                         
                         for sheet_name, df in sheet_dict.items():
-                            self.log(f"    📄 掃描工作表：{sheet_name}")
+                            self.log(f"    掃描工作表：{sheet_name}")
                             seal_idx, date_idx, cem_idx, file_idx = -1, -1, -1, 0
                             
                             for _, row in df.iterrows():
@@ -518,7 +518,7 @@ class SerialProcessorApp:
                                     count_dup += 1
                                 data_mapping[key].append(record)
                                 
-                        self.log(f"    ✅ 工作表讀取完畢：新增獨立 {count_new}，附加重複 {count_dup}")
+                        self.log(f"    工作表讀取完畢：新增獨立 {count_new}，附加重複 {count_dup}")
                     
                     else:
                         batch = parse_filename_to_batch(fpath)
@@ -532,7 +532,7 @@ class SerialProcessorApp:
                             if not seal_col: missing.append("Seal1")
                             if not date_col: missing.append("Test Date")
                             if not cem_col: missing.append("CEM Meter Number")
-                            self.log(f"    ⚠️ 缺少欄位 {missing}，跳過")
+                            self.log(f"    缺少欄位 {missing}，跳過")
                             continue
 
                         count_new = 0
@@ -559,10 +559,10 @@ class SerialProcessorApp:
                             else:
                                 count_dup += 1
                             data_mapping[key].append(record)
-                            
-                        self.log(f"    ✅ 新增獨立 {count_new}，附加重複 {count_dup}")
+                        
+                        self.log(f"    新增獨立 {count_new}，附加重複 {count_dup}")
                 except Exception as e:
-                    self.log(f"    ❌ 錯誤：{e}")
+                    self.log(f"     錯誤：{e}")
                     continue
 
             if not data_mapping:
@@ -571,11 +571,11 @@ class SerialProcessorApp:
                 return
 
             total_duplicate_groups = sum(1 for v in data_mapping.values() if len(v) > 1)
-            self.log(f"\n📊 有效來源配對池：{len(data_mapping)} 筆，其中重複資料：{total_duplicate_groups} 組")
+            self.log(f"\n 有效來源配對池：{len(data_mapping)} 筆，其中重複資料：{total_duplicate_groups} 組")
 
             target_list = []
             if mode == "target":
-                self.log(f"\n🎯 讀取目標檔案：{os.path.basename(self.target_file)}")
+                self.log(f"\n 讀取目標檔案：{os.path.basename(self.target_file)}")
                 wb_target = load_workbook(self.target_file)
                 ws_target = wb_target.active
                 for row in ws_target.iter_rows(min_row=1, max_row=ws_target.max_row, min_col=3, max_col=3, values_only=True):
@@ -585,7 +585,7 @@ class SerialProcessorApp:
                 self.log(f"  目標筆數：{len(target_list)}")
             else:
                 target_list = self.current_serials
-                self.log(f"\n🎯 手動產生清單，總計要匹配筆數：{len(target_list)}")
+                self.log(f"\n 手動產生清單，總計要匹配筆數：{len(target_list)}")
 
             if mode == "target":
                 wb = wb_target
@@ -702,21 +702,21 @@ class SerialProcessorApp:
             if mode == "target":
                 out_name = f"處理完成_{os.path.basename(self.target_file)}"
             else:
-                out_name = f"吉配對結果_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                out_name = f"配對結果_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
             out_path = os.path.join(out_dir, out_name)
             wb.save(out_path)
 
-            self.log(f"\n💾 輸出：{os.path.basename(out_path)}")
-            self.log(f"✅ 成功填入：{match_count} 筆")
-            self.log(f"⚠️ 找不到資料被標黃：{not_found_count} 筆")
-            self.log(f"🔴 來源重複警示：共 {total_duplicate_groups} 組，印出 {dup_records_printed} 列")
-            self.log(f"📋 來源未被使用：{len(unmatched)} 筆")
-            self.log("\n✨ 完成！")
+            self.log(f"\n 輸出：{os.path.basename(out_path)}")
+            self.log(f" 成功填入：{match_count} 筆")
+            self.log(f" 找不到資料被標黃：{not_found_count} 筆")
+            self.log(f" 來源重複警示：共 {total_duplicate_groups} 組，印出 {dup_records_printed} 列")
+            self.log(f" 來源未被使用：{len(unmatched)} 筆")
+            self.log("\n 完成！")
 
             self.root.after(100, lambda: self.ask_open_folder(out_dir))
 
         except Exception as e:
-            self.log(f"\n❌ 錯誤：{e}")
+            self.log(f"\n 錯誤：{e}")
             self.log(traceback.format_exc())
         finally:
             if self.temp_dir and os.path.exists(self.temp_dir):
