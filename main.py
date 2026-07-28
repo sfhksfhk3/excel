@@ -130,7 +130,7 @@ def get_next_start(start_serial, count=50):
 class SerialProcessorApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("批次配對與編號生成工具 v6.1")
+        self.root.title("批次配對與編號生成工具 v7.0")
         self.root.geometry("800x750")
         self.root.resizable(True, True)
 
@@ -183,7 +183,7 @@ class SerialProcessorApp:
         self.btn_clear_source = ttk.Button(f1, text="清除", command=self.clear_source_files)
         self.btn_clear_source.pack(side=tk.LEFT, padx=5)
 
-        self.chk_merged = ttk.Checkbutton(step1, text="來源為匯整總表（第一欄為檔案名）", variable=self.is_merged_var)
+        self.chk_merged = ttk.Checkbutton(step1, text="來源為匯整總表（支援多Sheet、自動抓取飄移欄位）", variable=self.is_merged_var)
         self.chk_merged.pack(anchor=tk.W, pady=(5, 0))
 
         step2 = ttk.LabelFrame(main_frame, text="步驟 2：目標模式", padding=10)
@@ -400,7 +400,7 @@ class SerialProcessorApp:
             mode = self.mode_var.get()
             is_merged = self.is_merged_var.get()
             self.log(f"目標模式：{'檔案' if mode == 'target' else '手動'}")
-            self.log(f"來源類型：{'匯整總表' if is_merged else '個別檔案'}")
+            self.log(f"來源類型：{'匯整總表 (多Sheet動態欄位)' if is_merged else '個別檔案'}")
             self.log("=" * 50)
 
             self.temp_dir = tempfile.mkdtemp(prefix="batch_proc_")
@@ -410,7 +410,6 @@ class SerialProcessorApp:
                 shutil.copy2(src, dst)
                 temp_sources.append(dst)
 
-            # ====== 變更點 1：將字典的值改為「陣列」，以收集所有相同 Seal 的紀錄 ======
             data_mapping = {}
 
             self.log("\n📦 讀取來源資料...")
@@ -418,53 +417,81 @@ class SerialProcessorApp:
                 self.log(f"  → {os.path.basename(fpath)}")
                 try:
                     if is_merged:
-                        df = pd.read_excel(fpath, header=0)
-                        seal_col = find_column(df, ['Seal1', 'Seal 1', 'seal1', 'SEAL1', 'Seal No'])
-                        date_col = find_column(df, ['Test Date', 'Test date', 'test date', 'TestDate', 'Date'])
-                        cem_col = find_column(df, ['CEM Meter Number', 'CEM meter number', 'cem meter number', 'CEM No', 'Meter No'])
-                        file_col = df.columns[0]
-
-                        if not all([seal_col, date_col, cem_col]):
-                            missing = []
-                            if not seal_col: missing.append("Seal1")
-                            if not date_col: missing.append("Test Date")
-                            if not cem_col: missing.append("CEM Meter Number")
-                            self.log(f"    ⚠️ 缺少欄位 {missing}，跳過")
-                            continue
-
-                        current_batch = None
+                        # 支援多個工作表，並取消預設表頭以進行全頁面掃描
+                        sheet_dict = pd.read_excel(fpath, sheet_name=None, header=None)
                         count_new = 0
                         count_dup = 0
-                        for _, row in df.iterrows():
-                            fname = str(row[file_col]).strip() if pd.notna(row[file_col]) else ""
-                            if fname and fname.lower() != "nan":
+                        
+                        for sheet_name, df in sheet_dict.items():
+                            self.log(f"    📄 掃描工作表：{sheet_name}")
+                            seal_idx, date_idx, cem_idx, file_idx = -1, -1, -1, 0
+                            
+                            for _, row in df.iterrows():
+                                is_header_row = False
+                                
+                                # 逐格檢查，動態鎖定爛資料裡的表頭位置
+                                for idx, val in enumerate(row):
+                                    if pd.isna(val): continue
+                                    val_str = str(val).lower().replace(" ", "")
+                                    
+                                    if 'seal1' in val_str or 'sealno' in val_str:
+                                        seal_idx = idx
+                                        is_header_row = True
+                                    elif 'testdate' in val_str or val_str == 'date':
+                                        date_idx = idx
+                                        is_header_row = True
+                                    elif 'cemmeter' in val_str or 'cemno' in val_str or 'meterno' in val_str:
+                                        cem_idx = idx
+                                        is_header_row = True
+                                    elif 'source.name' in val_str or 'filename' in val_str:
+                                        file_idx = idx
+                                        is_header_row = True
+                                        
+                                if is_header_row:
+                                    # 當發現表頭，程式已經記下新的欄位座標，跳過本列不當資料處理
+                                    continue
+                                    
+                                # 如果還沒找到必要欄位，代表還沒抵達資料區
+                                if seal_idx == -1 or date_idx == -1 or cem_idx == -1:
+                                    continue
+                                    
+                                # ================= 開始依照動態座標抓取資料 =================
+                                fname = str(row.iloc[file_idx]).strip() if pd.notna(row.iloc[file_idx]) else ""
+                                if not fname or fname.lower() == "nan":
+                                    continue
+                                    
                                 current_batch = parse_filename_to_batch(fname)
-                            if not current_batch:
-                                continue
-                            seal_val = str(row[seal_col]).strip() if pd.notna(row[seal_col]) else ""
-                            if not seal_val or seal_val.lower() == "nan":
-                                continue
-                            date_val = row[date_col]
-                            cem_raw = str(row[cem_col]).strip() if pd.notna(row[cem_col]) else ""
+                                if not current_batch:
+                                    continue
+                                    
+                                seal_val = str(row.iloc[seal_idx]).strip() if pd.notna(row.iloc[seal_idx]) else ""
+                                # 防呆過濾掉空白或殘留的表頭字樣
+                                if not seal_val or seal_val.lower() in ["nan", "seal1", "seal 1", "seal no"]:
+                                    continue
+                                    
+                                date_val = row.iloc[date_idx]
+                                cem_raw = str(row.iloc[cem_idx]).strip() if pd.notna(row.iloc[cem_idx]) else ""
 
-                            key = clean_key(seal_val)
-                            cem_num = to_number_if_possible(cem_raw)
-                            record = {
-                                "original_seal": seal_val,
-                                "date_str": format_date_to_excel_ready(date_val),
-                                "batch": current_batch,
-                                "cem_num": cem_num
-                            }
-                            
-                            if key not in data_mapping:
-                                data_mapping[key] = []
-                                count_new += 1
-                            else:
-                                count_dup += 1
-                            data_mapping[key].append(record)
-                            
-                        self.log(f"    ✅ 新增獨立 {count_new}，附加重複 {count_dup}")
+                                key = clean_key(seal_val)
+                                cem_num = to_number_if_possible(cem_raw)
+                                record = {
+                                    "original_seal": seal_val,
+                                    "date_str": format_date_to_excel_ready(date_val),
+                                    "batch": current_batch,
+                                    "cem_num": cem_num
+                                }
+                                
+                                if key not in data_mapping:
+                                    data_mapping[key] = []
+                                    count_new += 1
+                                else:
+                                    count_dup += 1
+                                data_mapping[key].append(record)
+                                
+                        self.log(f"    ✅ 工作表讀取完畢：新增獨立 {count_new}，附加重複 {count_dup}")
+                    
                     else:
+                        # 個別檔案因為格式通常較為標準，沿用原本的安全讀取法
                         batch = parse_filename_to_batch(fpath)
                         df = pd.read_excel(fpath, header=0)
                         seal_col = find_column(df, ['Seal1', 'Seal 1', 'seal1', 'SEAL1', 'Seal No'])
@@ -557,7 +584,6 @@ class SerialProcessorApp:
             matched_keys = set()
             start_row = 2 if mode == "manual" else 1
 
-            # ====== 變更點 2：A 欄標記紅色邏輯 ======
             for i, serial in enumerate(target_list):
                 row = start_row + i
                 target_key = clean_key(serial)
@@ -575,10 +601,9 @@ class SerialProcessorApp:
 
                 if target_key in data_mapping:
                     records = data_mapping[target_key]
-                    info = records[0] # 取出第一筆匹配資料填入左側
-                    is_duplicate = len(records) > 1 # 判斷來源中是否重複
+                    info = records[0] 
+                    is_duplicate = len(records) > 1 
                     
-                    # 若重複，目標欄位 (A欄) 字體變為紅色
                     c_cell.font = red_font if is_duplicate else default_font
 
                     ws.cell(row=row, column=g_col, value=info["batch"]).font = default_font
@@ -602,7 +627,6 @@ class SerialProcessorApp:
                     match_count += 1
                     matched_keys.add(target_key)
                 else:
-                    # 找不到的保留黃色底色
                     if mode == "target":
                         for col in [g_col, i_col, j_col]:
                             cell = ws.cell(row=row, column=col)
@@ -628,8 +652,6 @@ class SerialProcessorApp:
 
             alert_row = alert_start + 1
 
-            # ====== 變更點 3：群組化輸出 P 欄重複資料 ======
-            # 首先，將「所有」重複的資料整組印出來放在一起
             dup_records_printed = 0
             for key, records in data_mapping.items():
                 if len(records) > 1:
@@ -642,7 +664,6 @@ class SerialProcessorApp:
                         alert_row += 1
                         dup_records_printed += 1
 
-            # 接著，印出「未配對且單筆正常」的剩餘資料
             unmatched = {k: v for k, v in data_mapping.items() if k not in matched_keys and len(v) == 1}
             for key, records in unmatched.items():
                 info = records[0]
