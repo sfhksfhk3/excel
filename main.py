@@ -4,6 +4,8 @@ import re
 import tempfile
 import shutil
 import traceback
+import platform
+import subprocess
 from datetime import datetime
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import PatternFill, Font, Alignment
@@ -161,11 +163,6 @@ class SerialProcessorApp:
         self.is_merged_var = tk.BooleanVar(value=False)
         self.temp_dir = None
 
-        # 初始化所有框架變數
-        self.target_frame = None
-        self.manual_frame = None
-        self.btn_process = None
-
         self.setup_ui()
 
     def setup_ui(self):
@@ -189,9 +186,11 @@ class SerialProcessorApp:
         )
         canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
+
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
+        # 綁定滑鼠滾輪
         def _on_mousewheel(event):
             canvas.yview_scroll(int(-1*(event.delta/120)), "units")
         canvas.bind_all("<MouseWheel>", _on_mousewheel)
@@ -207,9 +206,11 @@ class SerialProcessorApp:
         self.lbl_source = ttk.Label(btn_frame1, text="尚未選擇", foreground="gray")
         self.lbl_source.pack(side=tk.LEFT)
 
+        # 清除按鈕
         self.btn_clear_source = ttk.Button(btn_frame1, text="清除", command=self.clear_source_files)
         self.btn_clear_source.pack(side=tk.LEFT, padx=10)
 
+        # 匯整總表勾選
         self.chk_merged = ttk.Checkbutton(step1_frame, text="來源檔案為匯整總表（第一欄為檔案名，向下拼接多個檔案）", variable=self.is_merged_var)
         self.chk_merged.pack(anchor=tk.W, pady=(5, 0))
 
@@ -220,12 +221,8 @@ class SerialProcessorApp:
         mode_frame = ttk.Frame(step2_frame)
         mode_frame.pack(fill=tk.X, pady=(0, 10))
         ttk.Label(mode_frame, text="請選擇目標提供方式：").pack(side=tk.LEFT)
-        
-        # ⚠️ 重點修正：移除 command，改到最後綁定，避免過早觸發
-        self.rb_target = ttk.Radiobutton(mode_frame, text="載入現有目標檔案", variable=self.mode_var, value="target")
-        self.rb_target.pack(side=tk.LEFT, padx=15)
-        self.rb_manual = ttk.Radiobutton(mode_frame, text="手動輸入起始編號（自動生成 50 筆）", variable=self.mode_var, value="manual")
-        self.rb_manual.pack(side=tk.LEFT, padx=15)
+        ttk.Radiobutton(mode_frame, text="載入現有目標檔案", variable=self.mode_var, value="target", command=self.on_mode_change).pack(side=tk.LEFT, padx=15)
+        ttk.Radiobutton(mode_frame, text="手動輸入起始編號（自動生成 50 筆）", variable=self.mode_var, value="manual", command=self.on_mode_change).pack(side=tk.LEFT, padx=15)
 
         # 模式 1：選擇目標檔案
         self.target_frame = ttk.Frame(step2_frame)
@@ -239,6 +236,7 @@ class SerialProcessorApp:
 
         # 模式 2：手動輸入起始編號
         self.manual_frame = ttk.Frame(step2_frame)
+
         row_manual = ttk.Frame(self.manual_frame)
         row_manual.pack(fill=tk.X, pady=(5, 0))
         ttk.Label(row_manual, text="起始編號：").pack(side=tk.LEFT)
@@ -247,6 +245,7 @@ class SerialProcessorApp:
         self.btn_generate = ttk.Button(row_manual, text="產生 50 筆清單", command=self.generate_serials)
         self.btn_generate.pack(side=tk.LEFT, padx=5)
 
+        # 顯示清單的 Listbox
         list_frame = ttk.Frame(self.manual_frame)
         list_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         ttk.Label(list_frame, text="目標編號清單（雙擊編輯）：").pack(anchor=tk.W)
@@ -254,6 +253,7 @@ class SerialProcessorApp:
         self.listbox_serials.pack(fill=tk.BOTH, expand=True, pady=(2, 0))
         self.listbox_serials.bind('<Double-Button-1>', self.edit_serial)
 
+        # 下一組起始
         next_frame = ttk.Frame(self.manual_frame)
         next_frame.pack(fill=tk.X, pady=(5, 0))
         ttk.Label(next_frame, text="下一組起始（自動遞增 50）：").pack(side=tk.LEFT)
@@ -262,11 +262,11 @@ class SerialProcessorApp:
         self.btn_use_next = ttk.Button(next_frame, text="套用", command=self.use_next_start)
         self.btn_use_next.pack(side=tk.LEFT, padx=5)
 
+        self.on_mode_change()  # 初始化顯示
+
         # ===== 執行按鈕 =====
         btn_row = ttk.Frame(self.scrollable_frame)
         btn_row.pack(fill=tk.X, pady=(10, 10))
-        
-        # UI 正式建立 btn_process
         self.btn_process = ttk.Button(btn_row, text="▶ 開始處理", style="Accent.TButton", command=self.start_processing, state=tk.DISABLED)
         self.btn_process.pack(side=tk.LEFT, padx=(0, 20))
         self.progress = ttk.Progressbar(btn_row, mode='indeterminate', length=200)
@@ -277,19 +277,16 @@ class SerialProcessorApp:
         # ===== 狀態輸出區域 =====
         status_frame = ttk.LabelFrame(self.scrollable_frame, text="📋 處理狀態", padding=10)
         status_frame.pack(fill=tk.BOTH, expand=True, padx=5)
+
         self.status_text = tk.Text(status_frame, height=12, wrap=tk.WORD, font=("Consolas", 9), bg="white", relief="solid", borderwidth=1)
         self.status_text.pack(fill=tk.BOTH, expand=True)
         scrollbar_status = ttk.Scrollbar(self.status_text, command=self.status_text.yview)
         scrollbar_status.pack(side=tk.RIGHT, fill=tk.Y)
         self.status_text.config(yscrollcommand=scrollbar_status.set)
 
+        # 版權
         footer = ttk.Label(self.scrollable_frame, text="© 2025 批次處理工具 | 來源檔案唯讀，結果另存新檔", foreground="gray", background="#f0f4f8")
         footer.pack(pady=(10, 0))
-        
-        # ✅ 重點修正：所有 UI 包含 btn_process 都建立完後，才綁定事件並手動執行第一次
-        self.rb_target.config(command=self.on_mode_change)
-        self.rb_manual.config(command=self.on_mode_change)
-        self.on_mode_change()
 
     def clear_source_files(self):
         self.source_files = []
@@ -302,9 +299,6 @@ class SerialProcessorApp:
         self.check_ready()
 
     def on_mode_change(self):
-        if self.target_frame is None or self.manual_frame is None:
-            return
-            
         mode = self.mode_var.get()
         if mode == "target":
             self.target_frame.pack(fill=tk.X, pady=5)
@@ -371,25 +365,24 @@ class SerialProcessorApp:
             self.generate_serials()
 
     def check_ready(self):
-        if self.btn_process is None:
-            return
-            
         ready = False
         if self.source_files:
             if self.mode_var.get() == "target" and self.target_file:
                 ready = True
             elif self.mode_var.get() == "manual" and self.current_serials:
                 ready = True
-                
         if ready:
             self.btn_process.config(state=tk.NORMAL)
         else:
             self.btn_process.config(state=tk.DISABLED)
 
+    # 修正：確保在背景執行緒更新 UI 是安全的
     def log(self, message):
+        self.root.after(0, self._sync_log, message)
+
+    def _sync_log(self, message):
         self.status_text.insert(tk.END, message + "\n")
         self.status_text.see(tk.END)
-        self.root.update_idletasks()
 
     def start_processing(self):
         self.btn_process.config(state=tk.DISABLED)
@@ -400,6 +393,7 @@ class SerialProcessorApp:
             self.btn_clear_target.config(state=tk.DISABLED)
         else:
             self.btn_generate.config(state=tk.DISABLED)
+            
         self.progress.start(10)
         self.progress_label.config(text="處理中...")
         self.status_text.delete(1.0, tk.END)
@@ -531,7 +525,7 @@ class SerialProcessorApp:
 
             if not data_mapping and not duplicate_records:
                 self.log("\n❌ 無任何有效來源資料，處理中斷。")
-                self.finish_processing(False)
+                self.root.after(0, lambda: self.finish_processing(False))
                 return
 
             self.log(f"\n📊 可用配對筆數：{len(data_mapping)}，重複 Seal1 筆數：{len(duplicate_records)}")
@@ -694,6 +688,7 @@ class SerialProcessorApp:
             self.log(f"📋 未配對來源記錄：{len(unmatched)} 筆")
             self.log("\n✨ 處理完成！")
 
+            # 確保使用 main thread 跳出視窗
             self.root.after(100, lambda: self.ask_open_folder(output_dir))
 
         except Exception as e:
@@ -702,25 +697,31 @@ class SerialProcessorApp:
         finally:
             if self.temp_dir and os.path.exists(self.temp_dir):
                 shutil.rmtree(self.temp_dir, ignore_errors=True)
-            self.finish_processing(True)
+            # 確保 UI 在 main thread 恢復
+            self.root.after(0, lambda: self.finish_processing(True))
 
     def ask_open_folder(self, folder_path):
         if messagebox.askyesno("處理完成", "處理完成！\n\n是否開啟輸出檔案所在的資料夾？"):
-            os.startfile(folder_path)
+            # 跨平台支援開啟資料夾
+            if platform.system() == "Windows":
+                os.startfile(folder_path)
+            elif platform.system() == "Darwin":  # macOS
+                subprocess.Popen(["open", folder_path])
+            else:  # Linux
+                subprocess.Popen(["xdg-open", folder_path])
 
     def finish_processing(self, show_clear_message=True):
         self.progress.stop()
         self.progress_label.config(text="")
-        if self.btn_process:
-            self.btn_process.config(state=tk.NORMAL)
-            self.btn_source.config(state=tk.NORMAL)
-            self.btn_clear_source.config(state=tk.NORMAL)
-            if self.mode_var.get() == "target":
-                self.btn_target.config(state=tk.NORMAL)
-                self.btn_clear_target.config(state=tk.NORMAL)
-            else:
-                self.btn_generate.config(state=tk.NORMAL)
-            self.check_ready()
+        self.btn_process.config(state=tk.NORMAL)
+        self.btn_source.config(state=tk.NORMAL)
+        self.btn_clear_source.config(state=tk.NORMAL)
+        if self.mode_var.get() == "target":
+            self.btn_target.config(state=tk.NORMAL)
+            self.btn_clear_target.config(state=tk.NORMAL)
+        else:
+            self.btn_generate.config(state=tk.NORMAL)
+        self.check_ready()
         if show_clear_message and self.temp_dir:
             self.log("🧹 暫存檔案已清除")
 
