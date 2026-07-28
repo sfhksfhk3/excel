@@ -130,15 +130,16 @@ def get_next_start(start_serial, count=50):
 class SerialProcessorApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("批次配對與編號生成工具 v7.0")
+        self.root.title("吉配對 v8.0") # 更改工具名稱
         self.root.geometry("800x750")
         self.root.resizable(True, True)
 
         self.source_files = []
         self.target_file = None
         self.current_serials = [] 
-        self.mode_var = tk.StringVar(value="target")
-        self.is_merged_var = tk.BooleanVar(value=False)
+        # 預設為手動輸入清單
+        self.mode_var = tk.StringVar(value="manual")
+        self.is_merged_var = tk.BooleanVar(value=True) # 預設打勾
         self.temp_dir = None
 
         self.btn_source = None
@@ -153,6 +154,7 @@ class SerialProcessorApp:
         self.entry_start = None
         self.btn_generate = None
         self.btn_clear_list = None
+        self.btn_export_list = None # 新增輸出按鈕
         self.listbox_serials = None
 
         self.btn_process = None
@@ -169,7 +171,7 @@ class SerialProcessorApp:
         main_frame = ttk.Frame(self.root, padding=15)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(main_frame, text="批次配對與編號生成工具", font=("微軟正黑體", 16, "bold")).pack(pady=(0, 10))
+        ttk.Label(main_frame, text="吉配對", font=("微軟正黑體", 16, "bold")).pack(pady=(0, 10))
 
         step1 = ttk.LabelFrame(main_frame, text="步驟 1：來源檔案", padding=10)
         step1.pack(fill=tk.X, pady=5)
@@ -220,6 +222,10 @@ class SerialProcessorApp:
         
         self.btn_clear_list = ttk.Button(left_ctrl, text="🗑️ 清空清單", command=self.clear_manual_list)
         self.btn_clear_list.pack(anchor=tk.W, fill=tk.X, pady=(20, 2))
+
+        # ====== 新增：輸出清單按鈕 ======
+        self.btn_export_list = ttk.Button(left_ctrl, text="💾 輸出清單Excel檔案", command=self.export_manual_list)
+        self.btn_export_list.pack(anchor=tk.W, fill=tk.X, pady=2)
 
         right_list = ttk.Frame(self.manual_frame)
         right_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -272,6 +278,35 @@ class SerialProcessorApp:
             self.listbox_serials.delete(0, tk.END)
             self.entry_start.delete(0, tk.END)
             self.check_ready()
+
+    def export_manual_list(self):
+        """將目前產生的清單輸出為可供『載入目標檔案』讀取的格式（寫入C欄）"""
+        if not self.current_serials:
+            messagebox.showwarning("提示", "目前沒有清單可以輸出！")
+            return
+            
+        file_path = filedialog.asksaveasfilename(
+            title="輸出清單檔案",
+            defaultextension=".xlsx",
+            filetypes=[("Excel 檔案", "*.xlsx")]
+        )
+        if not file_path:
+            return
+            
+        try:
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "目標清單"
+            
+            # 從第一列開始將編號寫入 C 欄 (column=3)，相容目標檔案的讀取邏輯
+            for i, serial in enumerate(self.current_serials, start=1):
+                cell = ws.cell(row=i, column=3, value=serial)
+                cell.font = Font(name="新細明體", size=16)
+                
+            wb.save(file_path)
+            messagebox.showinfo("成功", f"清單已成功輸出至：\n{file_path}\n此檔案可直接由『載入目標檔案』模式讀取。")
+        except Exception as e:
+            messagebox.showerror("錯誤", f"輸出失敗：{e}")
 
     def on_mode_change(self):
         mode = self.mode_var.get()
@@ -383,6 +418,7 @@ class SerialProcessorApp:
         else:
             self.btn_generate.config(state=tk.DISABLED)
             self.btn_clear_list.config(state=tk.DISABLED)
+            self.btn_export_list.config(state=tk.DISABLED)
             self.entry_start.config(state=tk.DISABLED)
             
         self.progress.start(10)
@@ -417,7 +453,6 @@ class SerialProcessorApp:
                 self.log(f"  → {os.path.basename(fpath)}")
                 try:
                     if is_merged:
-                        # 支援多個工作表，並取消預設表頭以進行全頁面掃描
                         sheet_dict = pd.read_excel(fpath, sheet_name=None, header=None)
                         count_new = 0
                         count_dup = 0
@@ -429,7 +464,6 @@ class SerialProcessorApp:
                             for _, row in df.iterrows():
                                 is_header_row = False
                                 
-                                # 逐格檢查，動態鎖定爛資料裡的表頭位置
                                 for idx, val in enumerate(row):
                                     if pd.isna(val): continue
                                     val_str = str(val).lower().replace(" ", "")
@@ -448,14 +482,11 @@ class SerialProcessorApp:
                                         is_header_row = True
                                         
                                 if is_header_row:
-                                    # 當發現表頭，程式已經記下新的欄位座標，跳過本列不當資料處理
                                     continue
                                     
-                                # 如果還沒找到必要欄位，代表還沒抵達資料區
                                 if seal_idx == -1 or date_idx == -1 or cem_idx == -1:
                                     continue
                                     
-                                # ================= 開始依照動態座標抓取資料 =================
                                 fname = str(row.iloc[file_idx]).strip() if pd.notna(row.iloc[file_idx]) else ""
                                 if not fname or fname.lower() == "nan":
                                     continue
@@ -465,7 +496,6 @@ class SerialProcessorApp:
                                     continue
                                     
                                 seal_val = str(row.iloc[seal_idx]).strip() if pd.notna(row.iloc[seal_idx]) else ""
-                                # 防呆過濾掉空白或殘留的表頭字樣
                                 if not seal_val or seal_val.lower() in ["nan", "seal1", "seal 1", "seal no"]:
                                     continue
                                     
@@ -491,7 +521,6 @@ class SerialProcessorApp:
                         self.log(f"    ✅ 工作表讀取完畢：新增獨立 {count_new}，附加重複 {count_dup}")
                     
                     else:
-                        # 個別檔案因為格式通常較為標準，沿用原本的安全讀取法
                         batch = parse_filename_to_batch(fpath)
                         df = pd.read_excel(fpath, header=0)
                         seal_col = find_column(df, ['Seal1', 'Seal 1', 'seal1', 'SEAL1', 'Seal No'])
@@ -568,9 +597,11 @@ class SerialProcessorApp:
                 wb = Workbook()
                 ws = wb.active
                 ws.title = "配對結果"
-                headers = ["目標編號", "批次", "日期", "CEM 編號"]
-                for i, h in enumerate(headers, 1):
-                    cell = ws.cell(row=1, column=i, value=h)
+                
+                # 手動模式也改為與目標檔案相同的 C, G, I, J 欄位排版
+                headers_info = [(3, "目標編號"), (7, "批次"), (9, "日期"), (10, "CEM 編號")]
+                for col, h in headers_info:
+                    cell = ws.cell(row=1, column=col, value=h)
                     cell.font = Font(name="新細明體", size=12, bold=True)
                     cell.fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
                     cell.alignment = Alignment(horizontal='center')
@@ -588,10 +619,8 @@ class SerialProcessorApp:
                 row = start_row + i
                 target_key = clean_key(serial)
 
-                if mode == "target":
-                    c_col, g_col, i_col, j_col = 3, 7, 9, 10
-                else:
-                    c_col, g_col, i_col, j_col = 1, 2, 3, 4
+                # 不論 target 或 manual，全部統一輸出在 C, G, I, J 欄位
+                c_col, g_col, i_col, j_col = 3, 7, 9, 10
 
                 c_cell = ws.cell(row=row, column=c_col)
                 if mode == "manual":
@@ -627,18 +656,13 @@ class SerialProcessorApp:
                     match_count += 1
                     matched_keys.add(target_key)
                 else:
-                    if mode == "target":
-                        for col in [g_col, i_col, j_col]:
-                            cell = ws.cell(row=row, column=col)
-                            cell.value = ""
-                            cell.fill = yellow_fill
-                        c_cell.fill = yellow_fill
-                        c_cell.font = default_font
-                    else:
-                        for col in [1, 2, 3, 4]:
-                            cell = ws.cell(row=row, column=col)
-                            cell.fill = yellow_fill
-                        c_cell.font = default_font
+                    # 找不到時，清空 G, I, J 欄位並標黃，C 欄位保留編號並標黃
+                    for col in [g_col, i_col, j_col]:
+                        cell = ws.cell(row=row, column=col)
+                        cell.value = ""
+                        cell.fill = yellow_fill
+                    c_cell.fill = yellow_fill
+                    c_cell.font = default_font
                     not_found_count += 1
 
             # 警示區 P~S
@@ -678,7 +702,7 @@ class SerialProcessorApp:
             if mode == "target":
                 out_name = f"處理完成_{os.path.basename(self.target_file)}"
             else:
-                out_name = f"配對結果_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                out_name = f"吉配對結果_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
             out_path = os.path.join(out_dir, out_name)
             wb.save(out_path)
 
@@ -717,6 +741,7 @@ class SerialProcessorApp:
         else:
             self.btn_generate.config(state=tk.NORMAL)
             self.btn_clear_list.config(state=tk.NORMAL)
+            self.btn_export_list.config(state=tk.NORMAL)
             self.entry_start.config(state=tk.NORMAL)
             
         self.check_ready()
