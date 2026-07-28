@@ -298,6 +298,10 @@ class SerialProcessorApp:
         self.check_ready()
 
     def on_mode_change(self):
+        # 安全檢查：確保目標框架已經建立，防止 Radiobutton 初始化時過早觸發
+        if not hasattr(self, 'target_frame') or not hasattr(self, 'manual_frame'):
+            return
+            
         mode = self.mode_var.get()
         if mode == "target":
             self.target_frame.pack(fill=tk.X, pady=5)
@@ -364,6 +368,10 @@ class SerialProcessorApp:
             self.generate_serials()
 
     def check_ready(self):
+        # 安全檢查：確保執行按鈕已經建立
+        if not hasattr(self, 'btn_process'):
+            return
+            
         ready = False
         if self.source_files:
             if self.mode_var.get() == "target" and self.target_file:
@@ -700,15 +708,19 @@ class SerialProcessorApp:
     def finish_processing(self, show_clear_message=True):
         self.progress.stop()
         self.progress_label.config(text="")
-        self.btn_process.config(state=tk.NORMAL)
-        self.btn_source.config(state=tk.NORMAL)
-        self.btn_clear_source.config(state=tk.NORMAL)
-        if self.mode_var.get() == "target":
-            self.btn_target.config(state=tk.NORMAL)
-            self.btn_clear_target.config(state=tk.NORMAL)
-        else:
-            self.btn_generate.config(state=tk.NORMAL)
-        self.check_ready()
+        
+        # 同樣加上安全防護（避免程式中斷後呼叫時出錯）
+        if hasattr(self, 'btn_process'):
+            self.btn_process.config(state=tk.NORMAL)
+            self.btn_source.config(state=tk.NORMAL)
+            self.btn_clear_source.config(state=tk.NORMAL)
+            if self.mode_var.get() == "target":
+                self.btn_target.config(state=tk.NORMAL)
+                self.btn_clear_target.config(state=tk.NORMAL)
+            else:
+                self.btn_generate.config(state=tk.NORMAL)
+            self.check_ready()
+            
         if show_clear_message and self.temp_dir:
             self.log("🧹 暫存檔案已清除")
 
