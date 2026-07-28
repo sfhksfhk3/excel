@@ -173,7 +173,7 @@ class SerialProcessorApp:
         desc_label = ttk.Label(main_container, text="自動配對來源資料、檢測重複、支援匯整總表，輸出結果清晰易懂", font=("微軟正黑體", 10), background="#f0f4f8", foreground="#7f8c8d")
         desc_label.pack(pady=(0, 15))
 
-        # 建立 Canvas + Scrollbar 供內容滾動（避免視窗太小時無法操作）
+        # 建立 Canvas + Scrollbar 供內容滾動
         canvas = tk.Canvas(main_container, bg="#f0f4f8", highlightthickness=0)
         scrollbar = ttk.Scrollbar(main_container, orient="vertical", command=canvas.yview)
         self.scrollable_frame = ttk.Frame(canvas, style="TFrame")
@@ -260,8 +260,6 @@ class SerialProcessorApp:
         self.btn_use_next = ttk.Button(next_frame, text="套用", command=self.use_next_start)
         self.btn_use_next.pack(side=tk.LEFT, padx=5)
 
-        self.on_mode_change()  # 初始化顯示
-
         # ===== 執行按鈕 =====
         btn_row = ttk.Frame(self.scrollable_frame)
         btn_row.pack(fill=tk.X, pady=(10, 10))
@@ -285,6 +283,9 @@ class SerialProcessorApp:
         # 版權
         footer = ttk.Label(self.scrollable_frame, text="© 2025 批次處理工具 | 來源檔案唯讀，結果另存新檔", foreground="gray", background="#f0f4f8")
         footer.pack(pady=(10, 0))
+        
+        # ✅ 修正點：所有 UI 元件都建立完畢後，才呼叫初始化狀態的方法
+        self.on_mode_change()  
 
     def clear_source_files(self):
         self.source_files = []
